@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interactive Genomic Analysis Flow</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .objective-selector {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    select {
+      font-size: 16px;
+      padding: 8px 12px;
+    }
+    .workflow-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    .step {
+      background: white;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+      width: 80%;
+      max-width: 600px;
+      padding: 15px 20px;
+      text-align: center;
+      position: relative;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .tools {
+      margin-top: 10px;
+      font-size: 0.95em;
+    }
+    .tool {
+      display: inline-block;
+      background: #e0e7ff;
+      color: #1e40af;
+      padding: 4px 8px;
+      margin: 3px;
+      border-radius: 5px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .tool:hover {
+      background-color: #c7d2fe;
+    }
+    .tool.highlight {
+      background: #fde68a;
+      color: #92400e;
+      font-weight: bold;
+    }
+    .step::after {
+      content: "";
+      position: absolute;
+      width: 2px;
+      height: 30px;
+      background-color: #666;
+      bottom: -30px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .step:last-child::after {
+      content: none;
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.6);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 500px;
+      text-align: left;
+      position: relative;
+    }
+    .modal-content h2 {
+      margin-top: 0;
+    }
+    .close-btn {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      cursor: pointer;
+      font-size: 18px;
+      color: #999;
+    }
+    .param-box {
+      background: #f3f4f6;
+      padding: 10px;
+      border-radius: 6px;
+      font-family: monospace;
+      margin-top: 10px;
+    }
+    .modal-content a {
+      display: inline-block;
+      margin-top: 10px;
+      color: #2563eb;
+    }
+  </style>
+</head>
+<body>
+  <h1>Interactive Genomic Analysis Flow</h1>
+  <div class="objective-selector">
+    <label for="objective">Choose your research objective:</label>
+    <select id="objective">
+      <option value="">-- Select --</option>
+      <option value="resistance">1: Identify mutations related to resistance</option>
+      <option value="newmutation">2: Investigation of new mutation</option>
+      <option value="variability">3: Analyze genomic variability</option>
+      <option value="targets">4: Explore potential therapeutic targets</option>
+    </select>
+  </div>
+
+  <div id="flow" class="workflow-container"></div>
+
+  <div id="toolModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="document.getElementById('toolModal').style.display='none'">&times;</span>
+      <h2 id="toolName">Tool</h2>
+      <p><strong>Description:</strong> <span id="toolDesc"></span></p>
+      <p><strong>Usage Example:</strong></p>
+      <div class="param-box" id="toolParams"></div>
+      <a id="toolLink" href="#" target="_blank">Open documentation</a>
+    </div>
+  </div>
+
+  <script>
+    const flow = document.getElementById("flow");
+    const selector = document.getElementById("objective");
+    const modal = document.getElementById("toolModal");
+    const toolName = document.getElementById("toolName");
+    const toolDesc = document.getElementById("toolDesc");
+    const toolParams = document.getElementById("toolParams");
+    const toolLink = document.getElementById("toolLink");
+
+    const toolInfo = {
+      "PicardTools": { url: "https://broadinstitute.github.io/picard/", tip: "Removes duplicate reads from BAM files", params: "java -jar picard.jar MarkDuplicates I=input.bam O=output.bam M=metrics.txt REMOVE_DUPLICATES=true" },
+      "FastQC": { url: "https://github.com/s-andrews/FastQC.git/", tip: "Quality control of sequencing reads", params: "fastqc sample.fastq -o output_folder" },
+      "Trimmomatic": { url: "https://github.com/usadellab/Trimmomatic.git", tip: "Read trimming and adapter removal", params: "java -jar trimmomatic.jar PE input_R1.fastq input_R2.fastq ..." },
+      "BWA": { url: "https://github.com/bwa-mem2/bwa-mem2.git", tip: "Read mapping using Burrows-Wheeler", params: "bwa mem -t 8 -M reference.fa reads_1.fq reads_2.fq > aligned.sam" },
+      "Bowtie2": { url: "http://bowtie-bio.sourceforge.net/bowtie2/", tip: "Fast and memory-efficient alignment", params: "bowtie2 -x index -1 reads_1.fq -2 reads_2.fq -S output.sam" },
+      "GATK": { url: "https://github.com/broadinstitute/gatk.git", tip: "Variant discovery and genotyping", params: "gatk HaplotypeCaller -R ref.fa -I input.bam -O output.vcf" },
+      "SAMtools": { url: "https://github.com/samtools/samtools.git", tip: "SAM/BAM file manipulation", params: "samtools mpileup -uf reference.fasta input.bam | bcftools call -mv -Ov > variants.vcf" },
+      "TB-Profiler": { url: "https://github.com/jodyphelan/TBProfiler", tip: "Drug resistance prediction for TB", params: "tb-profiler profile -1 R1.fastq -2 R2.fastq -o output" },
+      "Mykrobe": { url: "https://www.mykrobe.com/", tip: "Resistance and lineage detection", params: "mykrobe predict sample --species tb --format json" },
+      "KvarQ": { url: "https://github.com/SwissTPH/KvarQ", tip: "TB genome resistance screening", params: "kvarq run --ref ref.json --reads sample.fastq" },
+      "SnpEff": { url: "https://pcingola.github.io/SnpEff/", tip: "Genetic variant annotation", params: "java -jar snpEff.jar GRCh37.75 input.vcf > annotated.vcf" },
+      "VEP": { url: "https://www.ensembl.org/info/docs/tools/vep/index.html", tip: "Variant Effect Predictor", params: "vep -i input.vcf -o output.txt" },
+      "IQ-TREE": { url: "http://www.iqtree.org/", tip: "Phylogenetic inference", params: "iqtree -s alignment.fasta -m GTR+G -bb 1000" },
+      "RAxML": { url: "https://cme.h-its.org/exelixis/web/software/raxml/", tip: "Maximum likelihood phylogeny", params: "raxmlHPC -s input.phy -n result -m GTRGAMMA -p 12345" },
+      "iTOL": { url: "https://itol.embl.de/", tip: "Tree visualization", params: "Upload newick tree file to web interface" },
+      "SPAdes": { url: "https://cab.spbu.ru/software/spades/", tip: "Genome assembler", params: "spades.py -1 reads_1.fq -2 reads_2.fq -o spades_out" },
+      "Velvet": { url: "https://www.ebi.ac.uk/~zerbino/velvet/", tip: "De novo assembler", params: "velveth outdir 31 -fastq -shortPaired reads.fastq" },
+      "Prokka": { url: "https://github.com/tseemann/prokka", tip: "Annotation of prokaryotic genomes", params: "prokka contigs.fasta --outdir prokka_out" },
+      "AlphaFold": { url: "https://alphafold.ebi.ac.uk/", tip: "Protein structure prediction", params: "Run via AlphaFold web server or local pipeline" }
+    };
+
+    const workflows = {
+  resistance: [
+    { step: "Quality Control", tools: ["FastQC"], highlight: "FastQC" },
+    { step: "Read Trimming", tools: ["Trimmomatic"], highlight: "Trimmomatic" },
+    { step: "Removing Duplicates", tools: ["PicardTools"], highlight: "PicardTools" },
+    { step: "Mapping", tools: ["BWA", "Bowtie2"], highlight: "BWA" },
+    { step: "Variant Calling", tools: ["GATK", "SAMtools"], highlight: "GATK" },
+    { step: "Resistance Prediction", tools: ["TB-Profiler", "Mykrobe", "KvarQ"], highlight: "TB-Profiler" }
+  ],
+  newmutation: [
+    { step: "Quality Control", tools: ["FastQC"], highlight: "FastQC" },
+    { step: "Read Trimming", tools: ["Trimmomatic"], highlight: "Trimmomatic" },
+    { step: "Removing Duplicates", tools: ["PicardTools"], highlight: "PicardTools" },
+    { step: "Mapping", tools: ["BWA", "Bowtie2"], highlight: "BWA" },
+    { step: "Variant Calling", tools: ["GATK", "SAMtools"], highlight: "GATK" },
+    { step: "Annotation", tools: ["SnpEff"], highlight: "SnpEff" }
+  ],
+  variability: [
+    { step: "Quality Control", tools: ["FastQC"], highlight: "FastQC" },
+    { step: "Read Trimming", tools: ["Trimmomatic"], highlight: "Trimmomatic" },
+    { step: "Removing Duplicates", tools: ["PicardTools"], highlight: "PicardTools" },
+    { step: "Mapping", tools: ["BWA", "Bowtie2"], highlight: "BWA" },
+    { step: "Variant Calling", tools: ["GATK", "SAMtools"], highlight: "GATK" },
+    { step: "Phylogenetic Analysis", tools: ["IQ-TREE", "RAxML"], highlight: "IQ-TREE" },
+    { step: "Tree Visualization", tools: ["iTOL"], highlight: "iTOL" }
+  ],
+  targets: [
+    { step: "Quality Control", tools: ["FastQC"], highlight: "FastQC" },
+    { step: "Read Trimming", tools: ["Trimmomatic"], highlight: "Trimmomatic" },
+    { step: "Removing Duplicates", tools: ["PicardTools"], highlight: "PicardTools" },
+    { step: "De novo Assembly", tools: ["SPAdes", "Velvet"], highlight: "SPAdes" },
+    { step: "Annotation", tools: ["SnpEff", "Prokka"], highlight: "SnpEff" },
+    { step: "Structural Protein Modeling", tools: ["AlphaFold"], highlight: "AlphaFold" }
+  ]
+};
+
+    selector.addEventListener("change", () => {
+  flow.innerHTML = "";
+  const selected = selector.value;
+  if (!selected || !workflows[selected]) return;
+
+  workflows[selected].forEach(({ step, tools, highlight }) => {
+    const div = document.createElement("div");
+    div.className = "step";
+    div.innerHTML = `<strong>${step}</strong><div class="tools">${tools.map(tool => `<span class="tool ${tool === highlight ? 'highlight' : ''}">${tool}</span>`).join('')}</div>`;
+    flow.appendChild(div);
+  });
+});
+
+    function showModal(tool) {
+      const info = toolInfo[tool];
+      if (!info) return;
+      toolName.textContent = tool;
+      toolDesc.textContent = info.tip;
+      toolParams.textContent = info.params || "N/A";
+      toolLink.href = info.url;
+      modal.style.display = "flex";
+    }
+
+    // Override tool click behavior
+    document.addEventListener("click", function(e) {
+      if (e.target.classList.contains("tool")) {
+        e.preventDefault();
+        showModal(e.target.textContent);
+      }
+    });
+  </script>
+</body>
+</html>
+
