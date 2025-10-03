@@ -25,11 +25,4 @@ All files are provided in **HTML format** and are accessible through the links b
 
 ---
 
-## How to cite these materials
-If you use these supplementary materials, please also cite the main article:
 
-> *[Insert here the complete reference of your article once published]*
-
----
-
-📌 **Note:** If a link does not open as a rendered web page, you can access the raw HTML source directly through the GitHub repository.  
